@@ -1,0 +1,85 @@
+#!/usr/bin/env ansible-playbook
+---
+- name: Create Host
+  hosts: localhost
+  connection: local
+  gather_facts: no
+
+  vars_files:
+      - vars/connection.yml
+      - vars/credentials.yml
+      - vars/cluster_hosts.yml
+
+  vars:
+      input: &connection_vars
+          password: "{{ password }}"
+          array_ip: "{{ array_ip_1 }}"
+          user: "{{  user  }}"
+          verifycert: false
+      vg_name: "Ansible_VolumeGroup"
+      vol_name: 'ansible_1'
+      cap_unit: 'GB'
+
+  tasks:
+      - name: Create host  {{ host1_name }}
+        dellemc_powerstore_host:
+            <<: *connection_vars
+            host_name: "{{ host1_name }}"
+            os_type: 'Linux'
+            initiators: "{{ host1_initiators }}"
+            state: 'present'
+            initiator_state: 'present-in-host'
+      - name: Create host  {{ host2_name }}
+        dellemc_powerstore_host:
+            <<: *connection_vars
+            host_name: "{{ host2_name }}"
+            os_type: 'Linux'
+            initiators: "{{ host2_initiators }}"
+            state: 'present'
+            initiator_state: 'present-in-host'
+
+      - name: Create host group with hosts using {{ hostgroup_name }}
+        dellemc_powerstore_hostgroup:
+            <<: *connection_vars
+            hostgroup_name: "{{ hostgroup_name }}"
+            hosts:
+                - "{{ host1_name }}"
+                - "{{ host2_name }}"
+            state: 'present'
+            host_state: 'present-in-group'
+
+      - name: Create volume
+        dellemc_powerstore_volume:
+            <<: *connection_vars
+            vol_name: "{{vol_name +'_' }}{{item}}"
+            size: 1
+            cap_unit: "{{cap_unit}}"
+            state: 'present'
+        loop: "{{ range(1, 9 + 1, 1) | list }}"
+
+      - name: Map volume to host group {{ hostgroup_name }}  without HLU
+        dellemc_powerstore_volume:
+            <<: *connection_vars
+            vol_name: "{{vol_name +'_' }}{{item}}"
+            state: 'present'
+            mapping_state: 'mapped'
+            hostgroup: "{{ hostgroup_name }}"
+        loop: "{{ range(1, 9 + 1, 1) | list }}"
+
+      - name: Create volume group without protection policy
+        dellemc_powerstore_volumegroup:
+            <<: *connection_vars
+            vg_name: "{{vg_name}}"
+            description: "This volume group is for ansible"
+            state: "present"
+            is_write_order_consistent: true #    Default is true but adding anyway.
+
+      - name: Add Volumes to Volume Group
+        dellemc_powerstore_volumegroup:
+            <<: *connection_vars
+            vg_name: "{{vg_name}}"
+            volumes:
+                - "{{vol_name +'_' }}{{item}}"
+            state: 'present'
+            vol_state: "present-in-group"
+        loop: "{{ range(1, 9 + 1, 1) | list }}"
